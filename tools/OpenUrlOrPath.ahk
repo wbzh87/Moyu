@@ -24,6 +24,8 @@ OpenUrlOrPath()
 
         ; 检查并处理选中的文本
         if (selectedText != "") {
+            ; 先尝试清理路径（移除不匹配的引号等）
+            cleanPath := CleanFilePath(selectedText)
             ; 判断是否为网址
             if IsUrl(selectedText) {
                 Run(selectedText)
@@ -31,17 +33,20 @@ OpenUrlOrPath()
             }
 
             ; 判断是否为文件路径
-            if IsFilePath(selectedText) {
+            if IsFilePath(cleanPath) {
                 ; 检查路径是否存在
-                if (DirExist(selectedText) || FileExist(selectedText)) {
-                    Run(selectedText)
+                if (DirExist(cleanPath) || FileExist(cleanPath)) {
+                    if (cleanPath ~= "i)\.lnk$") {
+                        OpenShortcutDirectory(cleanPath)
+                    } else {
+                        Run(cleanPath)
+                    }
                     return
                 }
 
-                ; 如果路径不存在，尝试去除引号后再检查
-                cleanPath := StrReplace(selectedText, '"', '')
-                if (DirExist(cleanPath) || FileExist(cleanPath)) {
-                    Run(cleanPath)
+                ; 如果清理后的路径不存在，再尝试原始路径
+                if (DirExist(selectedText) || FileExist(selectedText)) {
+                    Run(selectedText)
                     return
                 }
             }
@@ -75,6 +80,27 @@ OpenUrlOrPath()
     }
 }
 
+; 清理文件路径中的引号和其他常见问题
+CleanFilePath(path) {
+    ; 移除首尾的引号（如果只有一边有引号也移除）
+    path := Trim(path)
+    if (SubStr(path, 1, 1) == '"' && SubStr(path, -1) != '"') {
+        path := SubStr(path, 2)  ; 移除开头的引号
+    }
+    if (SubStr(path, -1) == '"' && SubStr(path, 1, 1) != '"') {
+        path := SubStr(path, 1, -1)  ; 移除结尾的引号
+    }
+    if (SubStr(path, 1, 1) == '"' && SubStr(path, -1) == '"') {
+        path := SubStr(path, 2, -1)  ; 移除首尾的引号
+    }
+
+    ; 移除其他常见的问题字符
+    path := StrReplace(path, '"', '')  ; 移除所有剩余的引号
+    path := Trim(path)  ; 再次清理空格
+
+    return path
+}
+
 ; 判断字符串是否为网址
 IsUrl(str) {
     ; 简单的网址模式匹配
@@ -96,4 +122,24 @@ IsFilePath(str) {
         return true
 
     return false
+}
+
+; 仅对快捷方式打开所在目录
+OpenShortcutDirectory(lnkPath) {
+    try {
+        ; 解析快捷方式获取目标路径
+        shell := ComObject("WScript.Shell")
+        shortcut := shell.CreateShortcut(lnkPath)
+        targetPath := shortcut.TargetPath
+
+        ; 获取目标文件所在目录并打开
+        SplitPath(targetPath, , &outDir)
+        if (DirExist(outDir)) {
+            Run(outDir)
+        } else {
+            Run(lnkPath) ; 如果目录不存在，直接运行快捷方式
+        }
+    } catch {
+        Run(lnkPath) ; 如果解析失败，直接运行快捷方式
+    }
 }
